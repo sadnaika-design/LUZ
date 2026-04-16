@@ -269,6 +269,11 @@ main{max-width:1180px;margin:0 auto;padding:28px 18px}
 
 <!-- ADMIN -->
 <div class="adm" id="admView">
+  <div style="background:white;border:2px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="font-size:12px;font-weight:700;color:var(--purple)">🔗 סנכרון Google Sheets</div>
+    <div id="syncStatus" style="font-size:12px;font-weight:600"></div>
+    <button class="abtn pri" style="font-size:11px;padding:5px 12px" onclick="loadFromSheets().then(()=>{renderCal();renderAdmList();renderShowsSection();})">🔄 רענן נתונים</button>
+  </div>
   <div class="adm-grid">
     <div>
       <div class="asec">
@@ -413,10 +418,80 @@ const DEF={
   ]
 };
 
-// ── STORAGE ──
-['theater_customs','th_customs','ikaz_customs','tz_customs'].forEach(k=>localStorage.removeItem(k));
-let customs=JSON.parse(localStorage.getItem('tz2_customs')||'{}');
-function save(){localStorage.setItem('tz2_customs',JSON.stringify(customs))}
+// ── GOOGLE SHEETS API ──
+// אחרי פריסת Apps Script, הדבק כאן את ה-URL שלך:
+const API_URL = 'https://script.google.com/macros/s/AKfycbyPqf5eryUOcZOL7xuSbEX_jPAeJpQDxmgAIlAXG3fWdsJ3B_LFiqqdG8cVnxRQnOL-/exec';
+
+let customs = {};
+let apiReady = API_URL !== 'https://script.google.com/macros/s/AKfycbyPqf5eryUOcZOL7xuSbEX_jPAeJpQDxmgAIlAXG3fWdsJ3B_LFiqqdG8cVnxRQnOL-/exec';
+
+// Load from Sheets on startup
+async function loadFromSheets() {
+  if (!apiReady) {
+    showStatus('⚠️ לא מחובר ל-Google Sheets – עובד במצב מקומי', 'warn');
+    // fallback: use localStorage
+    const local = localStorage.getItem('tz2_customs');
+    if (local) customs = JSON.parse(local);
+    return;
+  }
+  showStatus('🔄 טוען נתונים...', 'info');
+  try {
+    const res = await fetch(`${API_URL}?action=read`);
+    const data = await res.json();
+    if (data.ok) {
+      customs = data.customs || {};
+      showStatus('✓ מחובר ל-Google Sheets', 'ok');
+    } else {
+      throw new Error(data.error);
+    }
+  } catch (err) {
+    showStatus('❌ שגיאה בטעינה: ' + err.message, 'err');
+    const local = localStorage.getItem('tz2_customs');
+    if (local) customs = JSON.parse(local);
+  }
+  renderCal();
+}
+
+// Save one day to Sheets
+async function save(ds) {
+  const date = ds || admDs;
+  if (!date) return;
+  // always save to localStorage as backup
+  localStorage.setItem('tz2_customs', JSON.stringify(customs));
+
+  if (!apiReady) return;
+
+  const cu = customs[date];
+  try {
+    if (!cu) {
+      // deleted – send delete
+      await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'delete', date })
+      });
+    } else {
+      await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'write', date, data: cu })
+      });
+    }
+    showStatus('✓ נשמר ב-Google Sheets', 'ok');
+  } catch (err) {
+    showStatus('⚠️ שמור מקומית – לא הצליח לסנכרן: ' + err.message, 'warn');
+  }
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const colors = { ok: '#1a7a0a', warn: '#c89600', err: '#cc1a1a', info: '#5b1f8a' };
+  el.textContent = msg;
+  el.style.color = colors[type] || '#555';
+  el.style.display = 'block';
+  if (type === 'ok') setTimeout(() => { el.textContent = ''; }, 3000);
+}
 
 // ── AUTH ──
 let isAdmin=false;
@@ -659,23 +734,22 @@ function toggleCancelDay(){
   ensureDay(admDs);
   customs[admDs].cancelled=checked;
   if(!checked)delete customs[admDs].cancelNote;
-  // cleanup if empty
   cleanupDay(admDs);
-  save();renderCal();renderAdmTable();renderAdmList();
+  save(admDs);renderCal();renderAdmTable();renderAdmList();
   document.getElementById('admDelDayBtn').style.display=customs[admDs]?'inline-flex':'none';
 }
 function saveCancelNote(){
   if(!admDs)return;
   ensureDay(admDs);
   customs[admDs].cancelNote=document.getElementById('cancelNote').value;
-  save();
+  save(admDs);
 }
 function saveTitle(){
   if(!admDs)return;
   ensureDay(admDs);
   customs[admDs].title=document.getElementById('admTitle').value;
   cleanupDay(admDs);
-  save();renderCal();renderAdmList();
+  save(admDs);renderCal();renderAdmList();
 }
 function ensureDay(ds){
   if(!customs[ds]){const dt=new Date(ds+'T12:00:00');customs[ds]={title:'',dayKey:dt.getDay()===4?'thu':'sun',groups:{},cancelled:false};}
@@ -779,14 +853,13 @@ function doSaveSlot(){
   // recalc group span
   cu.groups[group].start=sl.reduce((mn,s)=>toMin(s.start)<toMin(mn)?s.start:mn,sl[0].start);
   cu.groups[group].end=sl.reduce((mx,s)=>toMin(s.end)>toMin(mx)?s.end:mx,sl[0].end);
-  save();closePop();renderAdmTable();renderCal();renderAdmList();
+  save(ds);closePop();renderAdmTable();renderCal();renderAdmList();
   document.getElementById('admDelDayBtn').style.display='inline-flex';
 }
 
 function doDelSlot(){
   if(!confirm('מחק שיעור זה?'))return;
   const ds=admDs;
-  // If no custom day yet, copy from default so we can delete one slot
   ensureDay(ds);
   const cu=customs[ds];
   const g=editGrp;
@@ -799,14 +872,14 @@ function doDelSlot(){
   grp.slots.splice(editIdx,1);
   if(!grp.slots.length)delete cu.groups[g];
   cleanupDay(ds);
-  save();closePop();renderAdmTable();renderCal();renderAdmList();
+  save(ds);closePop();renderAdmTable();renderCal();renderAdmList();
   document.getElementById('admDelDayBtn').style.display=customs[ds]?'inline-flex':'none';
 }
 
 function deleteAdmDay(){
   if(!admDs||!confirm('איפוס יום זה לברירת מחדל?'))return;
   delete customs[admDs];
-  save();renderAdmTable();renderCal();renderAdmList();
+  save(admDs);renderAdmTable();renderCal();renderAdmList();
   document.getElementById('admDelDayBtn').style.display='none';
   document.getElementById('admTitle').value='';
   document.getElementById('cancelCheck').checked=false;
@@ -910,6 +983,7 @@ function showView(v){
 }
 
 initCal();
+loadFromSheets();
 </script>
 </body>
 </html>
