@@ -419,67 +419,79 @@ const DEF={
 };
 
 // ── GOOGLE SHEETS API ──
-// אחרי פריסת Apps Script, הדבק כאן את ה-URL שלך:
 const API_URL = 'https://script.google.com/macros/s/AKfycbyPqf5eryUOcZOL7xuSbEX_jPAeJpQDxmgAIlAXG3fWdsJ3B_LFiqqdG8cVnxRQnOL-/exec';
 
 let customs = {};
-let apiReady = API_URL !== 'https://script.google.com/macros/s/AKfycbyPqf5eryUOcZOL7xuSbEX_jPAeJpQDxmgAIlAXG3fWdsJ3B_LFiqqdG8cVnxRQnOL-/exec';
+let apiReady = true;
 
-// Load from Sheets on startup
-async function loadFromSheets() {
-  if (!apiReady) {
-    showStatus('⚠️ לא מחובר ל-Google Sheets – עובד במצב מקומי', 'warn');
-    // fallback: use localStorage
-    const local = localStorage.getItem('tz2_customs');
-    if (local) customs = JSON.parse(local);
-    return;
-  }
+// ── READ via JSONP (avoids CORS on GET) ──
+function loadFromSheets() {
   showStatus('🔄 טוען נתונים...', 'info');
-  try {
-    const res = await fetch(`${API_URL}?action=read`);
-    const data = await res.json();
-    if (data.ok) {
-      customs = data.customs || {};
-      showStatus('✓ מחובר ל-Google Sheets', 'ok');
-    } else {
-      throw new Error(data.error);
-    }
-  } catch (err) {
-    showStatus('❌ שגיאה בטעינה: ' + err.message, 'err');
-    const local = localStorage.getItem('tz2_customs');
-    if (local) customs = JSON.parse(local);
-  }
-  renderCal();
+  return new Promise((resolve) => {
+    const cbName = '_gsCallback_' + Date.now();
+    const script = document.createElement('script');
+    // Apps Script supports ?callback= for JSONP
+    script.src = `${API_URL}?action=read&callback=${cbName}`;
+    script.onerror = () => {
+      showStatus('❌ שגיאת רשת – עובד מקומית', 'err');
+      const local = localStorage.getItem('tz2_customs');
+      if (local) try { customs = JSON.parse(local); } catch(e){}
+      renderCal();
+      resolve();
+    };
+    window[cbName] = (data) => {
+      delete window[cbName];
+      script.remove();
+      if (data && data.ok) {
+        customs = data.customs || {};
+        localStorage.setItem('tz2_customs', JSON.stringify(customs));
+        showStatus('✓ מחובר ל-Google Sheets', 'ok');
+      } else {
+        showStatus('⚠️ שגיאה מהשרת – עובד מקומית', 'warn');
+        const local = localStorage.getItem('tz2_customs');
+        if (local) try { customs = JSON.parse(local); } catch(e){}
+      }
+      renderCal();
+      resolve();
+    };
+    // timeout fallback after 8 seconds
+    setTimeout(() => {
+      if (window[cbName]) {
+        delete window[cbName];
+        script.remove();
+        showStatus('⏱ timeout – עובד מקומית', 'warn');
+        const local = localStorage.getItem('tz2_customs');
+        if (local) try { customs = JSON.parse(local); } catch(e){}
+        renderCal();
+        resolve();
+      }
+    }, 8000);
+    document.head.appendChild(script);
+  });
 }
 
-// Save one day to Sheets
+// ── WRITE/DELETE via fetch with text/plain (bypasses CORS preflight) ──
 async function save(ds) {
   const date = ds || admDs;
   if (!date) return;
-  // always save to localStorage as backup
   localStorage.setItem('tz2_customs', JSON.stringify(customs));
 
-  if (!apiReady) return;
-
   const cu = customs[date];
+  const body = cu
+    ? JSON.stringify({ action: 'write', date, data: cu })
+    : JSON.stringify({ action: 'delete', date });
+
+  showStatus('💾 שומר...', 'info');
   try {
-    if (!cu) {
-      // deleted – send delete
-      await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'delete', date })
-      });
-    } else {
-      await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'write', date, data: cu })
-      });
-    }
+    // text/plain avoids CORS preflight; Apps Script reads postData.contents
+    await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body
+    });
     showStatus('✓ נשמר ב-Google Sheets', 'ok');
   } catch (err) {
-    showStatus('⚠️ שמור מקומית – לא הצליח לסנכרן: ' + err.message, 'warn');
+    showStatus('⚠️ שמור מקומי בלבד – ' + err.message, 'warn');
   }
 }
 
