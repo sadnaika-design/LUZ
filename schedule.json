@@ -2095,5 +2095,12 @@
         ]
       }
     }
+  },
+  "2026-04-23": {
+    "title": "",
+    "dayKey": "thu",
+    "cancelled": false,
+    "cancelNote": "",
+    "groups": {}
   }
 }
