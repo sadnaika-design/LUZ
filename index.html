@@ -264,9 +264,9 @@ main{max-width:1180px;margin:0 auto;padding:28px 18px}
 <!-- ADMIN -->
 <div class="adm" id="admView">
   <div class="status-bar">
-    <div style="font-size:12px;font-weight:700;color:var(--purple)">🔗 Google Sheets</div>
+    <div style="font-size:12px;font-weight:700;color:var(--purple)">📁 לוח מקובץ schedule.json</div>
     <div id="syncStatus" class="status-txt"></div>
-    <button class="abtn pri" style="font-size:11px;padding:5px 12px" onclick="loadData().then(()=>{renderCal();renderAdmList();renderShows();})">🔄 רענן</button>
+    <button class="abtn pri" style="font-size:11px;padding:5px 12px" onclick="downloadSchedule()">📥 הורד schedule.json לפרסום</button>
   </div>
   <div class="adm-grid">
     <div>
@@ -318,9 +318,9 @@ main{max-width:1180px;margin:0 auto;padding:28px 18px}
 
 <script>
 // ══════════════════════════════════════════════════════
-//  CONFIG – שנה רק את ה-URL
+//  CONFIG – הכל מגיע מ-schedule.json באותה תיקייה
 // ══════════════════════════════════════════════════════
-const API_URL = 'https://script.google.com/macros/s/AKfycbyPqf5eryUOcZOL7xuSbEX_jPAeJpQDxmgAIlAXG3fWdsJ3B_LFiqqdG8cVnxRQnOL-/exec';
+const SCHEDULE_URL = 'schedule.json';
 
 // ══════════════════════════════════════════════════════
 //  CONSTANTS
@@ -402,61 +402,61 @@ function status(msg,type){
 }
 
 // ══════════════════════════════════════════════════════
-//  DATA LOADING – JSONP
+//  DATA – קורא schedule.json, עדכונים נשמרים ב-localStorage
+//  כשרוצים לפרסם שינוי – מורידים schedule.json ומעלים ל-GitHub
 // ══════════════════════════════════════════════════════
-function loadData(){
+async function loadData(){
   status('🔄 טוען...','info');
-  return new Promise(resolve=>{
-    const cb='_cb'+Date.now();
-    const s=document.createElement('script');
-    s.src=`${API_URL}?action=read&callback=${cb}`;
-    s.onerror=()=>{
-      s.remove();delete window[cb];
-      status('❌ שגיאת רשת','err');
-      // fallback to localStorage
-      const loc=localStorage.getItem('tz_sched');
-      if(loc)try{schedule=JSON.parse(loc);}catch(e){}
-      resolve();
-    };
-    window[cb]=data=>{
-      s.remove();delete window[cb];
-      if(data&&data.ok){
-        schedule=data.schedule||{};
-        localStorage.setItem('tz_sched',JSON.stringify(schedule));
-        status('✓ מחובר','ok');
-      }else{
-        status('⚠️ שגיאה מהשרת','warn');
-        const loc=localStorage.getItem('tz_sched');
-        if(loc)try{schedule=JSON.parse(loc);}catch(e){}
-      }
-      resolve();
-    };
-    setTimeout(()=>{
-      if(window[cb]){s.remove();delete window[cb];
-        status('⏱ timeout','warn');
-        const loc=localStorage.getItem('tz_sched');
-        if(loc)try{schedule=JSON.parse(loc);}catch(e){}
-        resolve();}
-    },10000);
-    document.head.appendChild(s);
-  });
+  try{
+    const res=await fetch(SCHEDULE_URL+'?v='+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const data=await res.json();
+    schedule=data;
+    // merge any local overrides saved by admin
+    const loc=localStorage.getItem('tz_overrides');
+    if(loc){const ov=JSON.parse(loc);Object.assign(schedule,ov);}
+    status('✓ לוח טעון','ok');
+  }catch(err){
+    status('⚠️ טוען מקומית','warn');
+    const loc=localStorage.getItem('tz_sched');
+    if(loc)try{schedule=JSON.parse(loc);}catch(e){}
+  }
 }
 
-// שמור יום ל-Sheets
-async function pushDay(date,data){
-  const body=JSON.stringify({action:'save_day',date,data});
-  try{
-    await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body});
-    status('✓ נשמר','ok');
-  }catch(err){status('⚠️ שמור מקומי בלבד','warn');}
+// שמור שינוי מנהל – ב-localStorage בלבד
+// בסיום עריכה: הורד schedule.json מעודכן → העלה ל-GitHub
+function pushDay(date,data){
+  schedule[date]=data;
+  // שמור overrides נפרד
+  const loc=localStorage.getItem('tz_overrides');
+  const ov=loc?JSON.parse(loc):{};
+  ov[date]=data;
+  localStorage.setItem('tz_overrides',JSON.stringify(ov));
+  localStorage.setItem('tz_sched',JSON.stringify(schedule));
+  status('✓ נשמר מקומית','ok');
+  return Promise.resolve();
 }
-async function pushDelete(date){
-  const body=JSON.stringify({action:'delete_day',date});
-  try{
-    await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body});
-    status('✓ אופס','ok');
-  }catch(err){status('⚠️ שמור מקומי בלבד','warn');}
+function pushDelete(date){
+  delete schedule[date];
+  const loc=localStorage.getItem('tz_overrides');
+  const ov=loc?JSON.parse(loc):{};
+  delete ov[date];
+  localStorage.setItem('tz_overrides',JSON.stringify(ov));
+  localStorage.setItem('tz_sched',JSON.stringify(schedule));
+  status('✓ אופס','ok');
+  return Promise.resolve();
 }
+
+// הורדת schedule.json מעודכן (לאחר עריכה)
+function downloadSchedule(){
+  const blob=new Blob([JSON.stringify(schedule,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='schedule.json';
+  a.click();
+  status('📥 הורד schedule.json – העלי ל-GitHub','info');
+}
+
 
 // ══════════════════════════════════════════════════════
 //  AUTH
