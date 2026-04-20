@@ -160,6 +160,22 @@ main{max-width:1180px;margin:0 auto;padding:28px 18px}
 .ditem-body{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
 .ditem-body.open{display:block}
 
+/* PRODUCTIONS */
+.prod{display:none}.prod.on{display:block}
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:24px;margin-top:4px}
+.prod-card{background:white;border-radius:18px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.09);border:2px solid var(--border);transition:transform .15s,box-shadow .15s}
+.prod-card:hover{transform:translateY(-3px);box-shadow:0 8px 28px rgba(91,31,138,.13)}
+.prod-poster{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:#f0e8ff}
+.prod-poster-placeholder{width:100%;aspect-ratio:3/4;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:52px}
+.prod-info{padding:16px}
+.prod-name{font-size:17px;font-weight:900;color:var(--purple);margin-bottom:10px}
+.prod-rows{display:flex;flex-direction:column;gap:6px}
+.prod-row{display:flex;gap:8px;font-size:12px;align-items:flex-start}
+.prod-label{font-weight:700;color:var(--ink2);min-width:52px;flex-shrink:0}
+.prod-val{color:var(--ink);font-weight:500;line-height:1.5}
+.prod-times{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.prod-time{background:var(--purple-l);color:var(--purple);padding:2px 9px;border-radius:8px;font-size:11px;font-weight:700}
+
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{background:var(--ink3);border-radius:3px}
 </style>
@@ -226,6 +242,7 @@ main{max-width:1180px;margin:0 auto;padding:28px 18px}
     </div>
     <div class="hbtns">
       <button class="hbtn active" id="btn-cal" onclick="showView('cal')">לוח חודשי</button>
+      <button class="hbtn" id="btn-prod" onclick="showView('prod')">🎭 הפקות</button>
       <button class="hbtn" id="btn-adm" onclick="requireLogin()">✏️ ניהול</button>
       <button class="lo-btn hidden" id="lobtn" onclick="doLogout()">התנתק</button>
     </div>
@@ -259,6 +276,12 @@ main{max-width:1180px;margin:0 auto;padding:28px 18px}
   </div>
   <div id="cancelBanner" style="display:none"></div>
   <div id="dayContent"></div>
+</div>
+
+<!-- PRODUCTIONS -->
+<div class="prod" id="prodView">
+  <h2 style="font-size:22px;font-weight:900;color:var(--purple);margin-bottom:20px">🎭 הפקות העונה</h2>
+  <div class="prod-grid" id="prodGrid"></div>
 </div>
 
 <!-- ADMIN -->
@@ -990,22 +1013,187 @@ function renderShows(){
 }
 
 function showView(v){
-  document.getElementById('calView').classList.toggle('off',v==='adm');
+  document.getElementById('calView').classList.toggle('off', v==='adm'||v==='prod');
   document.getElementById('dayView').classList.remove('on');
-  document.getElementById('admView').classList.toggle('on',v==='adm');
-  document.getElementById('btn-cal').classList.toggle('active',v==='cal');
-  document.getElementById('btn-adm').classList.toggle('active',v==='adm');
+  document.getElementById('admView').classList.toggle('on', v==='adm');
+  document.getElementById('prodView').classList.toggle('on', v==='prod');
+  document.getElementById('btn-cal').classList.toggle('active', v==='cal');
+  document.getElementById('btn-adm').classList.toggle('active', v==='adm');
+  document.getElementById('btn-prod').classList.toggle('active', v==='prod');
   if(v==='adm'){
-    // טען token שמור
     const saved=localStorage.getItem('gh_token');
     if(saved)document.getElementById('ghTokenInput').value=saved;
     renderAdmList();renderShows();
   }
+  if(v==='prod') renderProductions();
 }
 
 // ══════════════════════════════════════════════════════
-//  INIT
+//  PRODUCTIONS DATA
 // ══════════════════════════════════════════════════════
+const PRODUCTIONS = [
+  {
+    id: 'impro',
+    name: 'אימפרו',
+    group: 'דוש ב',
+    poster: 'images/impro.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-04-29', day: 'רביעי', times: ['19:00', '20:30'] },
+      { date: '2026-04-30', day: 'חמישי', times: ['19:00', '20:30'] },
+    ]
+  },
+  {
+    id: 'stage4',
+    name: "סטייג' פור",
+    group: 'דוש ג',
+    poster: "images/stage4.png",
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-05-04', day: 'שני',    times: ['18:30', '20:30'] },
+      { date: '2026-05-07', day: 'חמישי',  times: ['18:30', '20:30'] },
+    ]
+  },
+  {
+    id: 'rebels',
+    name: 'המורדים',
+    group: 'דוש ב',
+    poster: 'images/rebels.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-05-11', day: 'שני',    times: ['17:00', '19:45'] },
+      { date: '2026-05-12', day: 'שלישי',  times: ['17:00', '19:45'] },
+      { date: '2026-05-13', day: 'רביעי',  times: ['17:00', '19:45'] },
+    ]
+  },
+  {
+    id: 'billy',
+    name: 'ערב מוזיקלי בילי שוורץ',
+    group: 'דוש ג',
+    poster: 'images/billy.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-05-14', day: 'חמישי',  times: ['18:00', '19:30', '21:00'] },
+    ]
+  },
+  {
+    id: 'orange',
+    name: 'כתום',
+    group: 'אנסמבל',
+    poster: 'images/orange.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-05-17', day: 'ראשון',  times: ['17:30', '19:30', '21:30'] },
+      { date: '2026-05-18', day: 'שני',    times: ['17:30', '19:30', '21:30'] },
+    ]
+  },
+  {
+    id: 'goodend',
+    name: 'סוף טוב',
+    group: 'אנסמבל',
+    poster: 'images/goodend.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-05-25', day: 'שני',    times: ['18:30', '20:30'] },
+      { date: '2026-06-04', day: 'חמישי',  times: ['18:30', '20:30'] },
+    ]
+  },
+  {
+    id: 'hv_end',
+    name: 'הפקת סיום',
+    group: 'כיתה ה-ו',
+    poster: 'images/hv_end.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-05-28', day: 'חמישי',  times: ['17:30'] },
+    ]
+  },
+  {
+    id: 'z_end',
+    name: 'הפקת סיום',
+    group: "כיתות ז'",
+    poster: 'images/z_end.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-06-01', day: 'שני',    times: ['17:30', '19:00'] },
+    ]
+  },
+  {
+    id: 'dialogues',
+    name: 'דיאלוגים',
+    group: 'דוש א',
+    poster: 'images/dialogues.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-06-11', day: 'חמישי',  times: ['18:00', '19:30'] },
+    ]
+  },
+  {
+    id: 'heroes',
+    name: 'גיבורות מהאגדות – המחזמר',
+    group: '',
+    poster: 'images/heroes.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-06-21', day: 'ראשון',  times: [] },
+      { date: '2026-06-22', day: 'שני',    times: [] },
+      { date: '2026-06-23', day: 'שלישי',  times: [] },
+    ]
+  },
+  {
+    id: 'drawer',
+    name: 'ערב מגירה – הפנינג סיום שנה',
+    group: '',
+    poster: 'images/drawer.png',
+    location: 'אולם התיאטרון',
+    dates: [
+      { date: '2026-06-25', day: 'חמישי',  times: [] },
+    ]
+  },
+];
+
+const HEB_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+
+function fmtDateHeb(ds){
+  const [y,m,d] = ds.split('-').map(Number);
+  return `${d} ${HEB_MONTHS[m-1]}`;
+}
+
+function renderProductions(){
+  const el = document.getElementById('prodGrid'); if(!el) return;
+  let html = '';
+  PRODUCTIONS.forEach(p => {
+    const c = p.group && COL[Object.keys(COL).find(k=>GL[k]===p.group||k===p.group)] || {bg:'#f0e8ff',text:'#5b1f8a',border:'#5b1f8a'};
+    // poster
+    const posterHtml = `<img class="prod-poster" src="${p.poster}" alt="${p.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="prod-poster-placeholder" style="display:none">🎭</div>`;
+    // dates
+    const datesHtml = p.dates.map(d => {
+      const timesHtml = d.times.length
+        ? d.times.map(t=>`<span class="prod-time">${t}</span>`).join('')
+        : '<span class="prod-time">שעה תפרסם בקרוב</span>';
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:4px">${d.day}, ${fmtDateHeb(d.date)}</div>
+        <div class="prod-times">${timesHtml}</div>
+      </div>`;
+    }).join('');
+
+    html += `<div class="prod-card">
+      ${posterHtml}
+      <div class="prod-info">
+        <div class="prod-name">${p.name}</div>
+        <div class="prod-rows">
+          ${p.group ? `<div class="prod-row"><span class="prod-label">קבוצה</span><span class="prod-val" style="background:${c.bg};color:${c.text};padding:2px 8px;border-radius:7px;font-weight:700">${p.group}</span></div>` : ''}
+          <div class="prod-row"><span class="prod-label">מיקום</span><span class="prod-val">${p.location}</span></div>
+          <div class="prod-row" style="flex-direction:column;gap:2px"><span class="prod-label" style="margin-bottom:4px">תאריכים</span>${datesHtml}</div>
+        </div>
+      </div>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+
 initCal();
 loadData().then(()=>{
   document.getElementById('calLoading').style.display='none';
