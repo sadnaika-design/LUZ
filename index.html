@@ -425,61 +425,75 @@ const GH = {
   api:   'https://api.github.com'
 };
 
-// קריאה מ-GitHub
+// קריאה – ציבורית מ-raw.githubusercontent.com (עובד לכולם ללא Token)
 async function loadData(){
   status('🔄 טוען...','info');
+  const rawUrl = `https://raw.githubusercontent.com/${GH.owner}/${GH.repo}/main/${GH.file}?v=${Date.now()}`;
   try{
-    const res = await fetch(
-      `${GH.api}/repos/${GH.owner}/${GH.repo}/contents/${GH.file}`,
-      { headers:{ Authorization:`token ${GH.token}`, Accept:'application/vnd.github.v3+json' } }
-    );
+    const res = await fetch(rawUrl);
     if(!res.ok) throw new Error('HTTP '+res.status);
-    const meta = await res.json();
-    schedule = JSON.parse(atob(meta.content.replace(/\n/g,'')));
+    const fromGH = await res.json();
+    schedule = fromGH;
     localStorage.setItem('tz_sched', JSON.stringify(schedule));
     status('✓ לוח טעון','ok');
   } catch(err){
+    console.error('loadData error:', err);
     status('⚠️ טוען מקומית','warn');
     const loc = localStorage.getItem('tz_sched');
     if(loc) try{ schedule = JSON.parse(loc); }catch(e){}
   }
 }
 
-// שמירה ל-GitHub
-async function githubSave() {
-  status('💾 שומר ל-GitHub...', 'info');
-  try {
+async function githubSave(){
+  status('💾 שומר ל-GitHub...','info');
+  const token = GH.token;
+  if(!token){ status('❌ אין Token – הכנס Token בשדה למעלה','err'); return; }
+  try{
     // קבל SHA עדכני
     const infoRes = await fetch(
       `${GH.api}/repos/${GH.owner}/${GH.repo}/contents/${GH.file}`,
-      { headers:{ Authorization:`token ${GH.token}`, Accept:'application/vnd.github.v3+json' } }
+      { headers:{ Authorization:`token ${token}`, Accept:'application/vnd.github.v3+json' } }
     );
+    if(!infoRes.ok){
+      const e = await infoRes.json();
+      throw new Error(`קריאה נכשלה: ${infoRes.status} – ${e.message}`);
+    }
     const info = await infoRes.json();
     const sha = info.sha;
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(schedule, null, 2))));
+    // קידוד נכון לעברית – TextEncoder → Uint8Array → base64
+    const jsonStr = JSON.stringify(schedule, null, 2);
+    const bytes = new TextEncoder().encode(jsonStr);
+    let binary = '';
+    bytes.forEach(b => binary += String.fromCharCode(b));
+    const content = btoa(binary);
     const putRes = await fetch(
       `${GH.api}/repos/${GH.owner}/${GH.repo}/contents/${GH.file}`,
       {
-        method: 'PUT',
+        method:'PUT',
         headers:{
-          Authorization:`token ${GH.token}`,
+          Authorization:`token ${token}`,
           Accept:'application/vnd.github.v3+json',
           'Content-Type':'application/json'
         },
         body: JSON.stringify({
-          message: `עדכון לוז ${new Date().toLocaleDateString('he-IL')}`,
+          message:`עדכון לוז ${new Date().toLocaleDateString('he-IL')}`,
           content, sha
         })
       }
     );
+    if(!putRes.ok){
+      const e = await putRes.json();
+      throw new Error(`כתיבה נכשלה: ${putRes.status} – ${e.message}`);
+    }
     const putData = await putRes.json();
     if(putData.content){
-      status('✓ נשמר! יתעדכן תוך ~30 שניות', 'ok');
+      status('✓ נשמר! יתעדכן תוך ~30 שניות','ok');
     } else {
-      throw new Error(putData.message || 'שגיאה');
+      throw new Error(JSON.stringify(putData));
     }
   } catch(err){
-    status('❌ '+err.message, 'err');
+    console.error('GitHub save error:', err);
+    status('❌ '+err.message,'err');
     localStorage.setItem('tz_sched', JSON.stringify(schedule));
   }
 }
