@@ -2,7 +2,7 @@
   "2026-04-20": {
     "title": "",
     "dayKey": "sun",
-    "cancelled": false,
+    "cancelled": true,
     "cancelNote": "",
     "groups": {
       "ז": {
