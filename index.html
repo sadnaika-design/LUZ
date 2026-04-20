@@ -593,11 +593,12 @@ function openDay(ds,dow){
     const groups=dk==='thu'?['הו','דושא','דושב','דושג','אנסמבל']:['ז','דושא','דושב','דושג','אנסמבל'];
     let html=buildLegend(ds,groups);
     html+=`<div class="sw"><table class="stbl"><thead id="_th"></thead><tbody id="_tb"></tbody></table></div>`;
-    const hasNonDefault=d&&(d.title||Object.keys(d.groups||{}).length>0);
-    if(hasNonDefault)html+=`<div class="cards-sec"><h3>לפי קבוצה</h3><div class="gcards" id="_cards"></div></div>`;
+    const hasData = !!d;
+    html+=`<div class="sw"><table class="stbl"><thead id="_th"></thead><tbody id="_tb"></tbody></table></div>`;
+    if(hasData||isShow)html+=`<div class="cards-sec"><h3>לפי קבוצה</h3><div class="gcards" id="_cards"></div></div>`;
     dc.innerHTML=html;
     renderDayTable(ds,dk,groups);
-    if(hasNonDefault&&document.getElementById('_cards'))renderCards(ds,dk,groups);
+    if((hasData||isShow)&&document.getElementById('_cards'))renderCards(ds,dk,groups);
   }
   document.getElementById('calView').classList.add('off');
   document.getElementById('dayView').classList.add('on');
@@ -715,16 +716,28 @@ function renderDayTable(ds,dk,groups){
 
 function renderCards(ds,dk,groups){
   const el=document.getElementById('_cards');if(!el)return;
+  const dayData=schedule[ds];
   let html='';
   groups.forEach(g=>{
     const c=COL[g]||{bg:'#eee',text:'#333',border:'#ccc'};
     const slots=getSlots(ds,g);
-    html+=`<div class="gcard" style="border-color:${c.border}"><div class="gch" style="background:${c.bg};color:${c.text}"><span>${GL[g]||g}</span></div><div class="gcb">`;
-    if(!slots.length)html+=`<div style="font-size:12px;color:#888;padding:4px 0">לא לומדים ביום זה</div>`;
-    else slots.forEach(sl=>{
-      const tc=slotCol(sl.teacher,sl.type);
-      html+=`<div class="crow"><div class="crow-t">${sl.start}–${sl.end}</div><div class="crow-d">${sl.teacher}${sl.note?' – '+sl.note:''}</div><span class="ctag" style="background:${tc.bg};color:${tc.text};border:1px solid ${tc.border}">${sl.type}</span></div>`;
-    });
+    // האם הקבוצה הזו שונתה מברירת מחדל?
+    const isModified=dayData&&dayData.groups&&dayData.groups[g];
+    const borderStyle=isModified?`border-color:${c.border};border-width:2.5px`:`border-color:${c.border}`;
+    html+=`<div class="gcard" style="${borderStyle}">
+      <div class="gch" style="background:${c.bg};color:${c.text}">
+        <span>${GL[g]||g}</span>
+        ${isModified?`<span style="font-size:10px;background:#fde8e8;color:#c0392b;padding:2px 7px;border-radius:8px;font-weight:700">שינוי</span>`:''}
+      </div>
+      <div class="gcb">`;
+    if(!slots.length){
+      html+=`<div style="font-size:12px;color:#888;padding:4px 0">לא לומדים ביום זה</div>`;
+    } else {
+      slots.forEach(sl=>{
+        const tc=slotCol(sl.teacher,sl.type);
+        html+=`<div class="crow"><div class="crow-t">${sl.start}–${sl.end}</div><div class="crow-d">${sl.teacher}${sl.note?' – '+sl.note:''}</div><span class="ctag" style="background:${tc.bg};color:${tc.text};border:1px solid ${tc.border}">${sl.type}</span></div>`;
+      });
+    }
     html+=`</div></div>`;
   });
   el.innerHTML=html;
