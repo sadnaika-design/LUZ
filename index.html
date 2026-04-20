@@ -428,19 +428,23 @@ const GH = {
 // קריאה – ציבורית מ-raw.githubusercontent.com (עובד לכולם ללא Token)
 async function loadData(){
   status('🔄 טוען...','info');
+  // נקה localStorage מקולקל
+  localStorage.removeItem('tz_sched');
   const rawUrl = `https://raw.githubusercontent.com/${GH.owner}/${GH.repo}/main/${GH.file}?v=${Date.now()}`;
   try{
     const res = await fetch(rawUrl);
     if(!res.ok) throw new Error('HTTP '+res.status);
     const fromGH = await res.json();
+    // בדיקה שהנתונים תקינים (עברית ולא ג'יבריש)
+    const sample = JSON.stringify(fromGH).slice(0,50);
+    if(sample.includes('ÃÂÃÂ') || sample.includes('×××')){
+      throw new Error('נתונים מקולקלים ב-GitHub – יש להעלות schedule.json נקי');
+    }
     schedule = fromGH;
-    localStorage.setItem('tz_sched', JSON.stringify(schedule));
     status('✓ לוח טעון','ok');
   } catch(err){
     console.error('loadData error:', err);
-    status('⚠️ טוען מקומית','warn');
-    const loc = localStorage.getItem('tz_sched');
-    if(loc) try{ schedule = JSON.parse(loc); }catch(e){}
+    status('❌ '+err.message,'err');
   }
 }
 
