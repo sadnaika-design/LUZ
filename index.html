@@ -593,12 +593,8 @@ function openDay(ds,dow){
     const groups=dk==='thu'?['הו','דושא','דושב','דושג','אנסמבל']:['ז','דושא','דושב','דושג','אנסמבל'];
     let html=buildLegend(ds,groups);
     html+=`<div class="sw"><table class="stbl"><thead id="_th"></thead><tbody id="_tb"></tbody></table></div>`;
-    const hasData = !!d;
-    html+=`<div class="sw"><table class="stbl"><thead id="_th"></thead><tbody id="_tb"></tbody></table></div>`;
-    if(hasData||isShow)html+=`<div class="cards-sec"><h3>לפי קבוצה</h3><div class="gcards" id="_cards"></div></div>`;
     dc.innerHTML=html;
     renderDayTable(ds,dk,groups);
-    if((hasData||isShow)&&document.getElementById('_cards'))renderCards(ds,dk,groups);
   }
   document.getElementById('calView').classList.add('off');
   document.getElementById('dayView').classList.add('on');
