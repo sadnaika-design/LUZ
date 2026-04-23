@@ -476,6 +476,9 @@ function loadData(){
       if(data&&data.ok){
         schedule = data.schedule||{};
         console.log('Schedule days loaded:', Object.keys(schedule).length);
+        // הצג תוכן יום ראשון לדיבוג
+        const firstDay = Object.keys(schedule)[0];
+        if(firstDay) console.log('Sample day', firstDay, JSON.stringify(schedule[firstDay]).slice(0,300));
         // עדכן PRODUCTIONS מה-Sheets
         if(data.productions&&data.productions.length){
           data.productions.forEach(p=>{
