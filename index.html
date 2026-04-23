@@ -793,10 +793,28 @@ function loadAdmDay(){
   document.getElementById('titleRow').style.display='block';
   document.getElementById('admAddBtn').style.display='flex';
 
-  // deep-clone working copy from schedule or defaults
+  // deep-clone working copy
   const existing=schedule[ds];
   admWorkingDay=JSON.parse(JSON.stringify(existing||{title:'',dayKey:admDk,cancelled:false,cancelNote:'',groups:{}}));
   if(!admWorkingDay.groups)admWorkingDay.groups={};
+
+  // הזרק slots של מופעים לתוך working day (כך שניתנים לעריכה)
+  const groups=admDk==='thu'?['הו','דושא','דושב','דושג','אנסמבל']:['ז','דושא','דושב','דושג','אנסמבל'];
+  groups.forEach(g=>{
+    const showSlots=getShowSlots(ds,g);
+    if(!showSlots.length)return;
+    // הבטח שהקבוצה קיימת ב-working day עם כל ה-slots שלה
+    if(!admWorkingDay.groups[g]){
+      const def=admDk==='thu'?DEF_THU:DEF_SUN;
+      const dg=def.find(x=>x.group===g);
+      admWorkingDay.groups[g]={start:'',end:'',slots:dg?JSON.parse(JSON.stringify(dg.slots)):[]};
+    }
+    // הוסף show slots רק אם עוד לא קיימים
+    showSlots.forEach(ss=>{
+      const exists=admWorkingDay.groups[g].slots.some(s=>s.start===ss.start&&s.end===ss.end);
+      if(!exists) admWorkingDay.groups[g].slots.push(ss);
+    });
+  });
 
   document.getElementById('cancelCheck').checked=!!admWorkingDay.cancelled;
   document.getElementById('cancelNoteRow').style.display=admWorkingDay.cancelled?'block':'none';
@@ -820,11 +838,10 @@ function renderAdmTable(){
   }
   const groups=admDk==='thu'?['הו','דושא','דושב','דושג','אנסמבל']:['ז','דושא','דושב','דושג','אנסמבל'];
 
-  // חשב טווח שעות דינמי כולל מופעים
+  // חשב טווח שעות דינמי
   let minT=16*60, maxT=22*60;
   groups.forEach(g=>{
-    const wSlots=getWorkingSlots(g);
-    [...wSlots, ...getShowSlots(admDs,g)].forEach(sl=>{
+    getWorkingSlots(g).forEach(sl=>{
       minT=Math.min(minT,toMin(sl.start));
       maxT=Math.max(maxT,toMin(sl.end));
     });
@@ -833,19 +850,17 @@ function renderAdmTable(){
   maxT=Math.ceil(maxT/30)*30;
   const timeSlots=[];for(let t=minT;t<=maxT;t+=30)timeSlots.push(t);
 
-  // בנה cell maps – working slots + show slots (show = לא ניתנים לעריכה)
+  // בנה cell maps – כל ה-slots ניתנים לעריכה (כולל מופעים)
   const cms=groups.map(g=>{
     const wSlots=getWorkingSlots(g);
-    const shSlots=getShowSlots(admDs,g);
-    const allSlots=[...wSlots,...shSlots];
-    const cov=buildCovMap(allSlots);
+    const cov=buildCovMap(wSlots);
     const cm={};let i=0;
     while(i<timeSlots.length){
       const t=timeSlots[i],cv=cov[t];
       if(!cv){cm[t]={t:'e'};i++;continue;}
       let span=1;
       while(i+span<timeSlots.length){const nc=cov[timeSlots[i+span]];if(nc&&nc.start===cv.start&&nc.end===cv.end)span++;else break;}
-      cm[t]={t:'c',span,...cv,isShow:cv.type==='מופע'};
+      cm[t]={t:'c',span,...cv};
       for(let s=1;s<span;s++)cm[timeSlots[i+s]]={t:'s'};
       i+=span;
     }
@@ -862,11 +877,6 @@ function renderAdmTable(){
       if(!cell||cell.t==='s')return;
       if(cell.t==='e'){hh+=`<td><div class="ecell-add" onclick="openNewSlotAt('${g}','${minS(t)}')">+</div></td>`;return;}
       const c=slotCol(cell.teacher,cell.type);
-      if(cell.isShow){
-        // ריבוע מופע – לא ניתן לעריכה
-        hh+=`<td rowspan="${cell.span}" style="background:${c.bg};border:2px solid ${c.border}"><div style="height:100%;padding:4px 7px;display:flex;flex-direction:column;justify-content:center;color:${c.text}"><div class="ec-t">${cell.teacher}</div><div class="ec-s">${cell.start}–${cell.end}</div></div></td>`;
-        return;
-      }
       const slots=getWorkingSlots(g);
       const si=slots.findIndex(sl=>sl.start===cell.start&&sl.end===cell.end&&sl.teacher===cell.teacher);
       hh+=`<td rowspan="${cell.span}" style="background:${c.bg};border:2px solid ${c.border}"><div class="ecell" onclick="openEdit('${g}',${si})" style="color:${c.text}"><div class="ecell-in"><div class="ec-t">${cell.teacher}</div><div class="ec-s">${cell.start}–${cell.end}</div></div></div></td>`;
