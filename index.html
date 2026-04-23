@@ -457,7 +457,6 @@ function status(msg,type){
 //  שנה את ה-URL לאחר פריסת Apps Script
 // ══════════════════════════════════════════════════════
 const API_URL = 'https://script.google.com/macros/s/AKfycbzS8_Zah9P-NUCZiPS3ser2KTOyRF2I34mdNaqXnzYpGctX1A54ZVuiQhT6VfLBs-v5/exec';
-// ↑ החליפי YOUR_SCRIPT_ID ב-URL שקיבלת מ-Apps Script
 
 // קריאה דרך JSONP (עוקף CORS)
 function loadData(){
@@ -473,8 +472,10 @@ function loadData(){
     };
     window[cb] = data=>{
       s.remove(); delete window[cb];
+      console.log('Sheets response:', data);
       if(data&&data.ok){
         schedule = data.schedule||{};
+        console.log('Schedule days loaded:', Object.keys(schedule).length);
         // עדכן PRODUCTIONS מה-Sheets
         if(data.productions&&data.productions.length){
           data.productions.forEach(p=>{
@@ -1281,6 +1282,20 @@ function renderProductions(){
 
 initCal();
 loadData().then(()=>{
+  // אם schedule ריק לגמרי – בנה מברירות מחדל
+  if(!schedule || Object.keys(schedule).length === 0){
+    console.warn('Schedule empty, building from defaults');
+    const start = new Date(2026,3,20), end = new Date(2026,5,30);
+    for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)){
+      const dow = d.getDay();
+      if(dow!==1 && dow!==4) continue;
+      const ds = fmtD(d);
+      schedule[ds] = {
+        title:'', dayKey: dow===4?'thu':'sun',
+        cancelled:false, cancelNote:'', groups:{}
+      };
+    }
+  }
   document.getElementById('calLoading').style.display='none';
   document.getElementById('calReady').style.display='block';
   renderCal();
