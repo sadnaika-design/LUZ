@@ -231,7 +231,27 @@ main{max-width:1180px;margin:0 auto;padding:28px 18px}
   </div>
 </div>
 
-<header>
+<!-- PRODUCTION EDIT POPUP -->
+<div class="spop hidden" id="prodPop">
+  <div class="sbox" style="width:480px;max-width:96vw;max-height:90vh;overflow-y:auto">
+    <h3 id="prodPopTitle">עריכת הפקה</h3>
+    <div class="srow"><label>שם הפקה</label><input type="text" id="ppName"></div>
+    <div class="srow"><label>קבוצה</label><input type="text" id="ppGroup" placeholder='למשל "דוש ב"'></div>
+    <div class="srow"><label>מיקום</label><input type="text" id="ppLocation" placeholder='למשל "אולם התיאטרון"'></div>
+    <div class="srow"><label>שם קובץ פוסטר</label><input type="text" id="ppPoster" placeholder='למשל "impro.png"'></div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;color:var(--ink2);display:block;margin-bottom:6px;font-weight:600">תאריכים ושעות</label>
+      <div id="ppDates"></div>
+      <button class="abtn sec" style="font-size:12px;padding:5px 12px;margin-top:8px" onclick="addProdDate()">+ הוסף תאריך</button>
+    </div>
+    <div class="sbtns">
+      <button class="abtn sec" onclick="closeProdPop()">ביטול</button>
+      <button class="abtn grn" onclick="saveProdEdit()">💾 שמור</button>
+    </div>
+  </div>
+</div>
+
+
   <div class="hi">
     <div class="logo-row">
       <div class="logo-circ">🎭</div>
@@ -303,7 +323,8 @@ main{max-width:1180px;margin:0 auto;padding:28px 18px}
         <div id="admList"></div>
       </div>
       <div class="asec">
-        <h3>🎭 תאריכי הופעות</h3>
+        <h3>🎭 עריכת הפקות</h3>
+        <p style="font-size:12px;color:var(--ink2);margin-bottom:12px">לחץ על הפקה לעריכת פרטים, תאריכים ושעות</p>
         <div id="showsList"></div>
       </div>
     </div>
@@ -988,28 +1009,98 @@ function renderAdmList(){
 
 function renderShows(){
   const el=document.getElementById('showsList');if(!el)return;
-  const byMonth={};
-  SHOWS.forEach(sh=>{
-    const[y,mo,d]=sh.date.split('-').map(Number);
-    const k=`${y}-${String(mo).padStart(2,'0')}`;
-    if(!byMonth[k])byMonth[k]={label:`${HEM[mo-1]} ${y}`,shows:[]};
-    byMonth[k].shows.push({...sh,d,mo,y});
-  });
   let html='';
-  Object.values(byMonth).forEach(m=>{
-    html+=`<div style="margin-bottom:16px"><div style="font-size:12px;font-weight:800;color:var(--purple);margin-bottom:6px">${m.label}</div>`;
-    m.shows.forEach(sh=>{
-      const c=sh.group&&COL[sh.group]?COL[sh.group]:{bg:'#f0e8ff',text:'#5b1f8a',border:'#5b1f8a'};
-      const ds2=`${String(sh.d).padStart(2,'0')}/${String(sh.mo).padStart(2,'0')}/${String(sh.y).slice(-2)}`;
-      html+=`<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;margin-bottom:5px;background:white;border-radius:9px;border:1.5px solid ${c.border}">
-        <span style="font-size:12px;font-weight:800;color:var(--ink2);min-width:62px">${ds2}</span>
-        <span style="font-size:13px;font-weight:600;flex:1">${sh.name}</span>
-        <button style="background:${c.bg};color:${c.text};border:1.5px solid ${c.border};border-radius:7px;padding:3px 10px;font-family:'Heebo',sans-serif;font-size:11px;font-weight:700;cursor:pointer" onclick="document.getElementById('admDate').value='${sh.date}';loadAdmDay();document.getElementById('admDate').scrollIntoView({behavior:'smooth',block:'center'})">ערוך לוז</button>
-      </div>`;
-    });
-    html+='</div>';
+  PRODUCTIONS.forEach((p,pi)=>{
+    const c=p.group&&COL[p.group]?COL[p.group]:{bg:'#f0e8ff',text:'#5b1f8a',border:'#5b1f8a'};
+    html+=`<div style="background:white;border:1.5px solid ${c.border};border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer" onclick="openProdEdit(${pi})">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:var(--ink)">${p.name}</div>
+          ${p.group?`<div style="font-size:11px;color:${c.text};font-weight:600">${p.group}</div>`:''}
+        </div>
+        <div style="text-align:left;font-size:11px;color:var(--ink2)">${p.dates.map(d=>fmtDateHeb(d.date)+(d.times.length?' '+d.times.join(', '):'') ).join(' | ')}</div>
+        <span style="color:#999;font-size:16px;flex-shrink:0">✏️</span>
+      </div>
+    </div>`;
   });
   el.innerHTML=html;
+}
+
+let editProdIdx=-1;
+
+function openProdEdit(idx){
+  editProdIdx=idx;
+  const p=PRODUCTIONS[idx];
+  document.getElementById('prodPopTitle').textContent=`עריכה: ${p.name}`;
+  document.getElementById('ppName').value=p.name;
+  document.getElementById('ppGroup').value=p.group||'';
+  document.getElementById('ppLocation').value=p.location||'';
+  document.getElementById('ppPoster').value=(p.poster||'').replace('images/','');
+  renderProdDates(p.dates);
+  document.getElementById('prodPop').classList.remove('hidden');
+}
+
+function renderProdDates(dates){
+  const el=document.getElementById('ppDates');
+  let html='';
+  dates.forEach((d,i)=>{
+    html+=`<div style="background:#f8f5ff;border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1.5px solid #e0d8f0">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <input type="date" value="${d.date}" style="flex:1;padding:5px 8px;border:1.5px solid var(--border);border-radius:7px;font-family:'Heebo',sans-serif;font-size:12px" onchange="updateProdDate(${i},'date',this.value)">
+        <select style="padding:5px 8px;border:1.5px solid var(--border);border-radius:7px;font-family:'Heebo',sans-serif;font-size:12px" onchange="updateProdDate(${i},'day',this.value)">
+          ${['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'].map(d2=>`<option${d.day===d2?' selected':''}>${d2}</option>`).join('')}
+        </select>
+        <button onclick="removeProdDate(${i})" style="background:#ffe0e0;color:#cc1a1a;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:13px">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--ink2);font-weight:600">שעות:</span>
+        <input type="text" value="${d.times.join(', ')}" placeholder='למשל "19:00, 21:00"' style="flex:1;min-width:140px;padding:5px 8px;border:1.5px solid var(--border);border-radius:7px;font-family:'Heebo',sans-serif;font-size:12px" onchange="updateProdDate(${i},'times',this.value)">
+      </div>
+    </div>`;
+  });
+  el.innerHTML=html;
+}
+
+// working copy of dates while editing
+let _editDates=[];
+
+function openProdEdit(idx){
+  editProdIdx=idx;
+  const p=PRODUCTIONS[idx];
+  _editDates=JSON.parse(JSON.stringify(p.dates));
+  document.getElementById('prodPopTitle').textContent=`עריכה: ${p.name}`;
+  document.getElementById('ppName').value=p.name;
+  document.getElementById('ppGroup').value=p.group||'';
+  document.getElementById('ppLocation').value=p.location||'';
+  document.getElementById('ppPoster').value=(p.poster||'').replace('images/','');
+  renderProdDates(_editDates);
+  document.getElementById('prodPop').classList.remove('hidden');
+}
+function updateProdDate(i,field,val){
+  if(field==='times') _editDates[i].times=val.split(',').map(t=>t.trim()).filter(Boolean);
+  else _editDates[i][field]=val;
+}
+function addProdDate(){
+  _editDates.push({date:'',day:'שני',times:[]});
+  renderProdDates(_editDates);
+}
+function removeProdDate(i){
+  _editDates.splice(i,1);
+  renderProdDates(_editDates);
+}
+function closeProdPop(){document.getElementById('prodPop').classList.add('hidden');}
+function saveProdEdit(){
+  const p=PRODUCTIONS[editProdIdx];
+  p.name=document.getElementById('ppName').value.trim();
+  p.group=document.getElementById('ppGroup').value.trim();
+  p.location=document.getElementById('ppLocation').value.trim();
+  const posterFile=document.getElementById('ppPoster').value.trim();
+  p.poster=posterFile?`images/${posterFile}`:'';
+  p.dates=_editDates;
+  closeProdPop();
+  renderShows();
+  renderProductions();
+  status('✓ הפקה עודכנה – זכור לשמור גם את לוז היום אם שינית תאריכים','ok');
 }
 
 function showView(v){
