@@ -307,14 +307,9 @@ main{max-width:1180px;margin:0 auto;padding:28px 18px}
 <!-- ADMIN -->
 <div class="adm" id="admView">
   <div class="status-bar">
-    <div style="font-size:12px;font-weight:700;color:var(--purple)">🔗 GitHub – שמירה אוטומטית</div>
+    <div style="font-size:12px;font-weight:700;color:var(--purple)">🔗 Google Sheets – שמירה אוטומטית</div>
     <div id="syncStatus" class="status-txt"></div>
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <input type="password" id="ghTokenInput" placeholder="GitHub Token (ghp_...)"
-        style="padding:5px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:'Heebo',sans-serif;font-size:12px;width:220px"
-        oninput="localStorage.setItem('gh_token',this.value)">
-      <button class="abtn pri" style="font-size:11px;padding:5px 12px" onclick="loadData().then(()=>{renderCal();renderAdmList();renderShows();})">🔄 רענן</button>
-    </div>
+    <button class="abtn pri" style="font-size:11px;padding:5px 12px" onclick="loadData().then(()=>{renderCal();renderAdmList();renderShows();})">🔄 רענן</button>
   </div>
   <div class="adm-grid">
     <div>
@@ -458,103 +453,97 @@ function status(msg,type){
 }
 
 // ══════════════════════════════════════════════════════
-//  GITHUB API – קורא ושומר schedule.json ישירות ב-GitHub
-//  ה-Token נשמר בדפדפן שלך בלבד (לא בקוד)
+//  GOOGLE SHEETS API
+//  שנה את ה-URL לאחר פריסת Apps Script
 // ══════════════════════════════════════════════════════
-const GH = {
-  get token(){ return localStorage.getItem('gh_token')||''; },
-  owner: 'sadnaika-design',
-  repo:  'LUZ',
-  file:  'schedule.json',
-  api:   'https://api.github.com'
-};
+const API_URL = 'https://script.google.com/macros/s/AKfycbzS8_Zah9P-NUCZiPS3ser2KTOyRF2I34mdNaqXnzYpGctX1A54ZVuiQhT6VfLBs-v5/exec';
+// ↑ החליפי YOUR_SCRIPT_ID ב-URL שקיבלת מ-Apps Script
 
-// קריאה – ציבורית מ-raw.githubusercontent.com (עובד לכולם ללא Token)
-async function loadData(){
+// קריאה דרך JSONP (עוקף CORS)
+function loadData(){
   status('🔄 טוען...','info');
-  // נקה localStorage מקולקל
-  localStorage.removeItem('tz_sched');
-  const rawUrl = `https://raw.githubusercontent.com/${GH.owner}/${GH.repo}/main/${GH.file}?v=${Date.now()}`;
-  try{
-    const res = await fetch(rawUrl);
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const fromGH = await res.json();
-    // בדיקה שהנתונים תקינים (עברית ולא ג'יבריש)
-    const sample = JSON.stringify(fromGH).slice(0,50);
-    if(sample.includes('ÃÂÃÂ') || sample.includes('×××')){
-      throw new Error('נתונים מקולקלים ב-GitHub – יש להעלות schedule.json נקי');
-    }
-    schedule = fromGH;
-    status('✓ לוח טעון','ok');
-  } catch(err){
-    console.error('loadData error:', err);
-    status('❌ '+err.message,'err');
-  }
-}
-
-async function githubSave(){
-  status('💾 שומר ל-GitHub...','info');
-  const token = GH.token;
-  if(!token){ status('❌ אין Token – הכנס Token בשדה למעלה','err'); return; }
-  try{
-    // קבל SHA עדכני
-    const infoRes = await fetch(
-      `${GH.api}/repos/${GH.owner}/${GH.repo}/contents/${GH.file}`,
-      { headers:{ Authorization:`token ${token}`, Accept:'application/vnd.github.v3+json' } }
-    );
-    if(!infoRes.ok){
-      const e = await infoRes.json();
-      throw new Error(`קריאה נכשלה: ${infoRes.status} – ${e.message}`);
-    }
-    const info = await infoRes.json();
-    const sha = info.sha;
-    // קידוד נכון לעברית – TextEncoder → Uint8Array → base64
-    const jsonStr = JSON.stringify(schedule, null, 2);
-    const bytes = new TextEncoder().encode(jsonStr);
-    let binary = '';
-    bytes.forEach(b => binary += String.fromCharCode(b));
-    const content = btoa(binary);
-    const putRes = await fetch(
-      `${GH.api}/repos/${GH.owner}/${GH.repo}/contents/${GH.file}`,
-      {
-        method:'PUT',
-        headers:{
-          Authorization:`token ${token}`,
-          Accept:'application/vnd.github.v3+json',
-          'Content-Type':'application/json'
-        },
-        body: JSON.stringify({
-          message:`עדכון לוז ${new Date().toLocaleDateString('he-IL')}`,
-          content, sha
-        })
+  return new Promise(resolve=>{
+    const cb = '_cb'+Date.now();
+    const s = document.createElement('script');
+    s.src = `${API_URL}?action=read&callback=${cb}`;
+    s.onerror = ()=>{
+      s.remove(); delete window[cb];
+      status('❌ שגיאת רשת','err');
+      resolve();
+    };
+    window[cb] = data=>{
+      s.remove(); delete window[cb];
+      if(data&&data.ok){
+        schedule = data.schedule||{};
+        // עדכן PRODUCTIONS מה-Sheets
+        if(data.productions&&data.productions.length){
+          data.productions.forEach(p=>{
+            const idx = PRODUCTIONS.findIndex(x=>x.id===p.id);
+            const prod = {
+              id: p.id,
+              name: p.name,
+              group: p.group,
+              location: p.location,
+              poster: p.poster ? 'images/'+p.poster : '',
+              dates: p.dates
+            };
+            if(idx>=0) PRODUCTIONS[idx]=prod;
+            else PRODUCTIONS.push(prod);
+          });
+        }
+        status('✓ לוח טעון','ok');
+      }else{
+        status('⚠️ שגיאה מהשרת','warn');
       }
-    );
-    if(!putRes.ok){
-      const e = await putRes.json();
-      throw new Error(`כתיבה נכשלה: ${putRes.status} – ${e.message}`);
-    }
-    const putData = await putRes.json();
-    if(putData.content){
-      status('✓ נשמר! יתעדכן תוך ~30 שניות','ok');
-    } else {
-      throw new Error(JSON.stringify(putData));
-    }
-  } catch(err){
-    console.error('GitHub save error:', err);
-    status('❌ '+err.message,'err');
-    localStorage.setItem('tz_sched', JSON.stringify(schedule));
-  }
+      resolve();
+    };
+    setTimeout(()=>{
+      if(window[cb]){ s.remove(); delete window[cb];
+        status('⏱ timeout','warn'); resolve(); }
+    }, 10000);
+    document.head.appendChild(s);
+  });
 }
 
-function pushDay(date, data){
+// שמירת יום ל-Sheets
+async function pushDay(date, data){
   schedule[date] = data;
-  localStorage.setItem('tz_sched', JSON.stringify(schedule));
-  return githubSave();
+  status('💾 שומר...','info');
+  try{
+    await fetch(API_URL,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'save_day', date, data})
+    });
+    status('✓ נשמר!','ok');
+  }catch(err){ status('⚠️ '+err.message,'warn'); }
 }
-function pushDelete(date){
+
+// איפוס יום ל-Sheets
+async function pushDelete(date){
   delete schedule[date];
-  localStorage.setItem('tz_sched', JSON.stringify(schedule));
-  return githubSave();
+  status('💾 מאפס...','info');
+  try{
+    await fetch(API_URL,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'delete_day', date})
+    });
+    status('✓ אופס!','ok');
+  }catch(err){ status('⚠️ '+err.message,'warn'); }
+}
+
+// שמירת הפקה ל-Sheets
+async function pushProduction(id, data){
+  status('💾 שומר הפקה...','info');
+  try{
+    await fetch(API_URL,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'save_production', id, data})
+    });
+    status('✓ הפקה נשמרה!','ok');
+  }catch(err){ status('⚠️ '+err.message,'warn'); }
 }
 
 
@@ -1100,7 +1089,12 @@ function saveProdEdit(){
   closeProdPop();
   renderShows();
   renderProductions();
-  status('✓ הפקה עודכנה – זכור לשמור גם את לוז היום אם שינית תאריכים','ok');
+  // שמור ל-Sheets
+  pushProduction(p.id, {
+    name: p.name, group: p.group, location: p.location,
+    poster: posterFile,
+    dates: p.dates
+  });
 }
 
 function showView(v){
