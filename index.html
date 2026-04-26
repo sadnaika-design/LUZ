@@ -453,77 +453,76 @@ function status(msg,type){
 }
 
 // ══════════════════════════════════════════════════════
-//  API – מתקשר עם Apps Script דרך google.script.run
+//  API – הכל דרך Apps Script (קריאה + כתיבה)
 // ══════════════════════════════════════════════════════
+const API_URL = 'https://script.google.com/macros/s/AKfycbzS8_Zah9P-NUCZiPS3ser2KTOyRF2I34mdNaqXnzYpGctX1A54ZVuiQhT6VfLBs-v5/exec';
 
 function loadData(){
   status('🔄 טוען...','info');
   return new Promise(resolve=>{
-    google.script.run
-      .withSuccessHandler(data=>{
-        if(data&&data.ok){
-          schedule=data.schedule||{};
-          if(data.productions&&data.productions.length){
-            data.productions.forEach(p=>{
-              const mapped={id:p.id,name:p.name,group:p.group,location:p.location,
-                poster:p.poster?'images/'+p.poster:'',dates:p.dates};
-              const idx=PRODUCTIONS.findIndex(x=>x.id===p.id);
-              if(idx>=0)PRODUCTIONS[idx]=mapped; else PRODUCTIONS.push(mapped);
-            });
-          }
-          status('✓ לוח טעון','ok');
-        }else{
-          status('⚠️ שגיאה: '+(data&&data.error||'לא ידוע'),'err');
+    const cb='_cb'+Date.now();
+    const s=document.createElement('script');
+    s.src=`${API_URL}?action=read&callback=${cb}&v=${Date.now()}`;
+    s.onerror=()=>{ s.remove();delete window[cb];status('❌ שגיאת רשת','err');resolve(); };
+    window[cb]=data=>{
+      s.remove();delete window[cb];
+      if(data&&data.ok){
+        schedule=data.schedule||{};
+        if(data.productions&&data.productions.length){
+          data.productions.forEach(p=>{
+            const mapped={id:p.id,name:p.name,group:p.group,location:p.location,
+              poster:p.poster?'images/'+p.poster:'',dates:p.dates};
+            const idx=PRODUCTIONS.findIndex(x=>x.id===p.id);
+            if(idx>=0)PRODUCTIONS[idx]=mapped; else PRODUCTIONS.push(mapped);
+          });
         }
-        resolve();
-      })
-      .withFailureHandler(err=>{ status('❌ '+err.message,'err'); resolve(); })
-      .readAll();
+        status('✓ לוח טעון','ok');
+      }else{
+        status('⚠️ שגיאה: '+(data&&data.error||'לא ידוע'),'err');
+      }
+      resolve();
+    };
+    setTimeout(()=>{ if(window[cb]){s.remove();delete window[cb];status('⏱ timeout','warn');resolve();} },12000);
+    document.head.appendChild(s);
   });
 }
 
-function pushDay(date,data){
+async function pushDay(date,data){
   schedule[date]=data;
   status('💾 שומר...','info');
-  return new Promise(resolve=>{
-    google.script.run
-      .withSuccessHandler(j=>{
-        if(j&&j.ok) status('✓ נשמר!','ok');
-        else status('❌ '+(j&&j.error||'שגיאה'),'err');
-        resolve();
-      })
-      .withFailureHandler(err=>{ status('❌ '+err.message,'err'); resolve(); })
-      .saveDayJSON(date, JSON.stringify(data));
-  });
+  try{
+    const r=await fetch(API_URL,{method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({action:'save_day',date,data})});
+    const j=await r.json();
+    if(j&&j.ok) status('✓ נשמר!','ok');
+    else status('❌ '+(j&&j.error||'שגיאה'),'err');
+  }catch(err){ status('❌ '+err.message,'err'); }
 }
 
-function pushDelete(date){
+async function pushDelete(date){
   delete schedule[date];
   status('💾 מאפס...','info');
-  return new Promise(resolve=>{
-    google.script.run
-      .withSuccessHandler(j=>{
-        if(j&&j.ok) status('✓ אופס!','ok');
-        else status('❌ '+(j&&j.error||'שגיאה'),'err');
-        resolve();
-      })
-      .withFailureHandler(err=>{ status('❌ '+err.message,'err'); resolve(); })
-      .deleteDay(date);
-  });
+  try{
+    const r=await fetch(API_URL,{method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({action:'delete_day',date})});
+    const j=await r.json();
+    if(j&&j.ok) status('✓ אופס!','ok');
+    else status('❌ '+(j&&j.error||'שגיאה'),'err');
+  }catch(err){ status('❌ '+err.message,'err'); }
 }
 
-function pushProduction(id,data){
+async function pushProduction(id,data){
   status('💾 שומר הפקה...','info');
-  return new Promise(resolve=>{
-    google.script.run
-      .withSuccessHandler(j=>{
-        if(j&&j.ok) status('✓ הפקה נשמרה!','ok');
-        else status('❌ '+(j&&j.error||'שגיאה'),'err');
-        resolve();
-      })
-      .withFailureHandler(err=>{ status('❌ '+err.message,'err'); resolve(); })
-      .saveProductionJSON(id, JSON.stringify(data));
-  });
+  try{
+    const r=await fetch(API_URL,{method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({action:'save_production',id,data})});
+    const j=await r.json();
+    if(j&&j.ok) status('✓ הפקה נשמרה!','ok');
+    else status('❌ '+(j&&j.error||'שגיאה'),'err');
+  }catch(err){ status('❌ '+err.message,'err'); }
 }
 
 
