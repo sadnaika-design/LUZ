@@ -574,6 +574,11 @@ function renderCal(){
   const g=document.getElementById('calGrid');
   const first=new Date(cy,cm,1).getDay(),dim=new Date(cy,cm+1,0).getDate();
   const today=new Date();today.setHours(0,0,0,0);
+  // בנה מפת תאריכי הפקות מ-PRODUCTIONS (מגיע מ-Sheets)
+  const showDates={};
+  PRODUCTIONS.forEach(p=>(p.dates||[]).forEach(d=>{
+    if(d.date) showDates[d.date]=p.name;
+  }));
   let h='<div class="ch">';
   HED.forEach((d,i)=>h+=`<div class="chc${(i===1||i===4)?' ws':''}">${d}</div>`);
   h+='</div><div class="cb2">';
@@ -585,17 +590,16 @@ function renderCal(){
     const isToday=dt.getTime()===today.getTime();
     const dayData=schedule[ds];
     const isCancelled=dayData&&dayData.cancelled;
-    const isShow=SHOWS.some(s=>s.date===ds);
-    // has non-default data?
+    const showName=showDates[ds];
     const hasMod=dayData&&!isCancelled&&(dayData.title||(Object.values(dayData.groups||{}).some(g=>(g.slots||[]).some(s=>s.type!=='רגיל'))));
     let cls='cd'+(isWS?' wsd':'')+(isToday?' today':'');
     let inner=`<div class="dn">${d}</div>`;
     if(isWS){
       const isThu=dow===4;
-      if(isCancelled)      inner+=`<div class="ddot d-cancel">✕ מבוטל</div>`;
-      else if(isShow){const sh=SHOWS.find(s=>s.date===ds);inner+=`<div class="ddot d-show">🎭 ${(sh.name.length>13?sh.name.slice(0,13)+'…':sh.name)}</div>`;}
-      else if(hasMod)      inner+=`<div class="ddot d-mod">✦ ${(dayData.title||'שינויים').slice(0,14)}</div>`;
-      else                 inner+=`<div class="ddot ${isThu?'d-thu':'d-sun'}">${isThu?"יום ה'":'יום ב\''}</div>`;
+      if(isCancelled)  inner+=`<div class="ddot d-cancel">✕ מבוטל</div>`;
+      else if(showName) inner+=`<div class="ddot d-show">🎭 ${showName.length>13?showName.slice(0,13)+'…':showName}</div>`;
+      else if(hasMod)  inner+=`<div class="ddot d-mod">✦ ${(dayData.title||'שינויים').slice(0,14)}</div>`;
+      else             inner+=`<div class="ddot ${isThu?'d-thu':'d-sun'}">${isThu?"יום ה'":'יום ב\''}</div>`;
     }
     h+=`<div class="${cls}" ${isWS?`onclick="openDay('${ds}',${dow})"`:''}>  ${inner}</div>`;
     cell++;
@@ -615,7 +619,7 @@ function openDay(ds,dow){
   document.getElementById('dvTitle').textContent=`${dn} ${ddStr(ds)}`;
   const d=schedule[ds];
   const badge=document.getElementById('dvBadge');
-  const showToday=SHOWS.find(s=>s.date===ds);
+  const showToday=PRODUCTIONS.find(p=>(p.dates||[]).some(d=>d.date===ds));
   const badgeTxt=d&&d.title?d.title:showToday?`🎭 ${showToday.name}`:'';
   if(badgeTxt){badge.style.cssText='display:inline-block;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;border:2px solid #cc1a1a;background:#ffe8e8;color:#8a0808';badge.textContent=badgeTxt;}
   else badge.style.display='none';
@@ -1295,24 +1299,45 @@ function renderProductions(){
 
 initCal();
 loadData().then(()=>{
-  // אם schedule ריק לגמרי – בנה מברירות מחדל
   if(!schedule || Object.keys(schedule).length === 0){
-    console.warn('Schedule empty, building from defaults');
     const start = new Date(2026,3,20), end = new Date(2026,5,30);
     for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)){
       const dow = d.getDay();
       if(dow!==1 && dow!==4) continue;
       const ds = fmtD(d);
-      schedule[ds] = {
-        title:'', dayKey: dow===4?'thu':'sun',
-        cancelled:false, cancelNote:'', groups:{}
-      };
+      schedule[ds] = {title:'',dayKey:dow===4?'thu':'sun',cancelled:false,cancelNote:'',groups:{}};
     }
   }
   document.getElementById('calLoading').style.display='none';
   document.getElementById('calReady').style.display='block';
   renderCal();
 });
+
+// ══════════════════════════════════════════════════════
+//  רענון אוטומטי כל 2 דקות
+//  תלמידים רואים עדכונים בלי לרענן ידנית
+// ══════════════════════════════════════════════════════
+setInterval(()=>{
+  // רענן רק אם לא בניהול (כדי לא להפריע לעריכה)
+  if(document.getElementById('admView').classList.contains('on')) return;
+  loadData().then(()=>{
+    renderCal();
+    // אם פתוח יום – רענן אותו גם
+    if(document.getElementById('dayView').classList.contains('on')){
+      const title = document.getElementById('dvTitle').textContent;
+      // חלץ תאריך מהכותרת (dd/mm/yy) ורענן
+      const m = title.match(/(\d{2})\/(\d{2})\/(\d{2})/);
+      if(m){
+        const ds = `20${m[3]}-${m[2]}-${m[1]}`;
+        const dt = new Date(ds+'T12:00:00');
+        const groups = dt.getDay()===4
+          ? ['הו','דושא','דושב','דושג','אנסמבל']
+          : ['ז','דושא','דושב','דושג','אנסמבל'];
+        renderDayTable(ds, dt.getDay()===4?'thu':'sun', groups);
+      }
+    }
+  });
+}, 2 * 60 * 1000); // כל 2 דקות
 </script>
 </body>
 </html>
