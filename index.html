@@ -453,101 +453,77 @@ function status(msg,type){
 }
 
 // ══════════════════════════════════════════════════════
-//  GOOGLE SHEETS API
-//  שנה את ה-URL לאחר פריסת Apps Script
+//  API – מתקשר עם Apps Script דרך google.script.run
 // ══════════════════════════════════════════════════════
-const API_URL = 'https://script.google.com/macros/s/AKfycbzS8_Zah9P-NUCZiPS3ser2KTOyRF2I34mdNaqXnzYpGctX1A54ZVuiQhT6VfLBs-v5/exec';
 
-// קריאה דרך JSONP (עוקף CORS)
 function loadData(){
   status('🔄 טוען...','info');
   return new Promise(resolve=>{
-    const cb = '_cb'+Date.now();
-    const s = document.createElement('script');
-    s.src = `${API_URL}?action=read&callback=${cb}`;
-    s.onerror = ()=>{
-      s.remove(); delete window[cb];
-      status('❌ שגיאת רשת','err');
-      resolve();
-    };
-    window[cb] = data=>{
-      s.remove(); delete window[cb];
-      console.log('Sheets response:', data);
-      if(data&&data.ok){
-        schedule = data.schedule||{};
-        console.log('Schedule days loaded:', Object.keys(schedule).length);
-        // הצג תוכן יום ראשון לדיבוג
-        const firstDay = Object.keys(schedule)[0];
-        if(firstDay) console.log('Sample day', firstDay, JSON.stringify(schedule[firstDay]).slice(0,300));
-        // עדכן PRODUCTIONS מה-Sheets
-        if(data.productions&&data.productions.length){
-          data.productions.forEach(p=>{
-            const idx = PRODUCTIONS.findIndex(x=>x.id===p.id);
-            const prod = {
-              id: p.id,
-              name: p.name,
-              group: p.group,
-              location: p.location,
-              poster: p.poster ? 'images/'+p.poster : '',
-              dates: p.dates
-            };
-            if(idx>=0) PRODUCTIONS[idx]=prod;
-            else PRODUCTIONS.push(prod);
-          });
+    google.script.run
+      .withSuccessHandler(data=>{
+        if(data&&data.ok){
+          schedule=data.schedule||{};
+          if(data.productions&&data.productions.length){
+            data.productions.forEach(p=>{
+              const mapped={id:p.id,name:p.name,group:p.group,location:p.location,
+                poster:p.poster?'images/'+p.poster:'',dates:p.dates};
+              const idx=PRODUCTIONS.findIndex(x=>x.id===p.id);
+              if(idx>=0)PRODUCTIONS[idx]=mapped; else PRODUCTIONS.push(mapped);
+            });
+          }
+          status('✓ לוח טעון','ok');
+        }else{
+          status('⚠️ שגיאה: '+(data&&data.error||'לא ידוע'),'err');
         }
-        status('✓ לוח טעון','ok');
-      }else{
-        status('⚠️ שגיאה מהשרת','warn');
-      }
-      resolve();
-    };
-    setTimeout(()=>{
-      if(window[cb]){ s.remove(); delete window[cb];
-        status('⏱ timeout','warn'); resolve(); }
-    }, 10000);
-    document.head.appendChild(s);
+        resolve();
+      })
+      .withFailureHandler(err=>{ status('❌ '+err.message,'err'); resolve(); })
+      .readAll();
   });
 }
 
-// שמירת יום ל-Sheets
-async function pushDay(date, data){
-  schedule[date] = data;
+function pushDay(date,data){
+  schedule[date]=data;
   status('💾 שומר...','info');
-  try{
-    await fetch(API_URL,{
-      method:'POST',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({action:'save_day', date, data})
-    });
-    status('✓ נשמר!','ok');
-  }catch(err){ status('⚠️ '+err.message,'warn'); }
+  return new Promise(resolve=>{
+    google.script.run
+      .withSuccessHandler(j=>{
+        if(j&&j.ok) status('✓ נשמר!','ok');
+        else status('❌ '+(j&&j.error||'שגיאה'),'err');
+        resolve();
+      })
+      .withFailureHandler(err=>{ status('❌ '+err.message,'err'); resolve(); })
+      .saveDayJSON(date, JSON.stringify(data));
+  });
 }
 
-// איפוס יום ל-Sheets
-async function pushDelete(date){
+function pushDelete(date){
   delete schedule[date];
   status('💾 מאפס...','info');
-  try{
-    await fetch(API_URL,{
-      method:'POST',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({action:'delete_day', date})
-    });
-    status('✓ אופס!','ok');
-  }catch(err){ status('⚠️ '+err.message,'warn'); }
+  return new Promise(resolve=>{
+    google.script.run
+      .withSuccessHandler(j=>{
+        if(j&&j.ok) status('✓ אופס!','ok');
+        else status('❌ '+(j&&j.error||'שגיאה'),'err');
+        resolve();
+      })
+      .withFailureHandler(err=>{ status('❌ '+err.message,'err'); resolve(); })
+      .deleteDay(date);
+  });
 }
 
-// שמירת הפקה ל-Sheets
-async function pushProduction(id, data){
+function pushProduction(id,data){
   status('💾 שומר הפקה...','info');
-  try{
-    await fetch(API_URL,{
-      method:'POST',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({action:'save_production', id, data})
-    });
-    status('✓ הפקה נשמרה!','ok');
-  }catch(err){ status('⚠️ '+err.message,'warn'); }
+  return new Promise(resolve=>{
+    google.script.run
+      .withSuccessHandler(j=>{
+        if(j&&j.ok) status('✓ הפקה נשמרה!','ok');
+        else status('❌ '+(j&&j.error||'שגיאה'),'err');
+        resolve();
+      })
+      .withFailureHandler(err=>{ status('❌ '+err.message,'err'); resolve(); })
+      .saveProductionJSON(id, JSON.stringify(data));
+  });
 }
 
 
@@ -968,16 +944,19 @@ async function saveDay(){
   admWorkingDay.cancelNote=document.getElementById('cancelNote').value;
   admWorkingDay.cancelled=document.getElementById('cancelCheck').checked;
   admWorkingDay.dayKey=admDk;
+  // עדכן זיכרון מיידית
   schedule[admDs]=JSON.parse(JSON.stringify(admWorkingDay));
-  localStorage.setItem('tz_sched',JSON.stringify(schedule));
   renderCal();renderAdmList();
+  // שמור ל-Sheets
   await pushDay(admDs,admWorkingDay);
+  // רענן מ-Sheets כדי לוודא סנכרון מלא
+  await loadData();
+  renderCal();renderAdmList();
 }
 
 async function resetDay(){
   if(!admDs||!confirm('לאפס ולחזור ללוח הרגיל?'))return;
   delete schedule[admDs];
-  localStorage.setItem('tz_sched',JSON.stringify(schedule));
   admWorkingDay={title:'',dayKey:admDk,cancelled:false,cancelNote:'',groups:{}};
   document.getElementById('cancelCheck').checked=false;
   document.getElementById('cancelNoteRow').style.display='none';
@@ -985,6 +964,8 @@ async function resetDay(){
   document.getElementById('admTitle').value='';
   renderCal();renderAdmList();renderAdmTable();
   await pushDelete(admDs);
+  await loadData();
+  renderCal();renderAdmList();
 }
 
 function renderAdmList(){
