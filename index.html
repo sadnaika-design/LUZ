@@ -1124,8 +1124,6 @@ function showView(v){
   document.getElementById('btn-adm').classList.toggle('active', v==='adm');
   document.getElementById('btn-prod').classList.toggle('active', v==='prod');
   if(v==='adm'){
-    const saved=localStorage.getItem('gh_token');
-    if(saved)document.getElementById('ghTokenInput').value=saved;
     renderAdmList();renderShows();
   }
   if(v==='prod') renderProductions();
